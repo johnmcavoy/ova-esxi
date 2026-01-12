@@ -32,19 +32,49 @@ A Flask web application for analyzing and deploying OVA files to standalone ESXi
 
 ### 1. Install ovftool
 
-Download and install VMware ovftool for Linux:
+You have two options for installing ovftool:
+
+#### Option A: Local Installation (Recommended)
+
+Place ovftool directly in the application's `ovftool/` directory:
 
 ```bash
 # Download from VMware (requires free account)
 # https://developer.vmware.com/tools/ovftool
 
-# Example installation (adjust version as needed)
+# Extract the bundle to a temporary location
+chmod +x VMware-ovftool-*-lin.x86_64.bundle
+./VMware-ovftool-*-lin.x86_64.bundle --extract /tmp/ovftool-extract
+
+# Copy to application directory
+cp -r /tmp/ovftool-extract/vmware-ovftool/* /home/user/ova-esxi/ovftool/
+
+# Make executable
+chmod +x /home/user/ova-esxi/ovftool/ovftool
+
+# Verify installation
+./ovftool/ovftool --version
+```
+
+See `ovftool/README.md` for detailed instructions.
+
+#### Option B: System-Wide Installation
+
+Install ovftool system-wide (requires sudo):
+
+```bash
+# Download from VMware
+# https://developer.vmware.com/tools/ovftool
+
+# Install system-wide
 chmod +x VMware-ovftool-*-lin.x86_64.bundle
 sudo ./VMware-ovftool-*-lin.x86_64.bundle --console --required --eulas-agreed
 
 # Verify installation
 ovftool --version
 ```
+
+**Note**: The application will automatically use the local `ovftool/ovftool` if present, otherwise it will look for ovftool in your system PATH.
 
 ### 2. Clone or Download This Repository
 

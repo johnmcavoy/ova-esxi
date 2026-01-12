@@ -26,7 +26,14 @@ ESXI_DATASTORE = os.environ.get('ESXI_DATASTORE', 'datastore1')
 ESXI_NETWORK = os.environ.get('ESXI_NETWORK', 'VM Network')
 
 # OVFTool Configuration
-OVFTOOL_PATH = os.environ.get('OVFTOOL_PATH', 'ovftool')
+# Default to local ovftool directory, fall back to system ovftool
+LOCAL_OVFTOOL = BASE_DIR / 'ovftool' / 'ovftool'
+if LOCAL_OVFTOOL.exists():
+    DEFAULT_OVFTOOL = str(LOCAL_OVFTOOL)
+else:
+    DEFAULT_OVFTOOL = 'ovftool'  # Use system PATH
+
+OVFTOOL_PATH = os.environ.get('OVFTOOL_PATH', DEFAULT_OVFTOOL)
 
 # Deployment Options
 DEFAULT_DISK_MODE = 'thin'  # thin, thick, or eagerZeroedThick

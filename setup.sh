@@ -18,13 +18,21 @@ PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
 echo "✓ Found Python $PYTHON_VERSION"
 
 # Check for ovftool
-if command -v ovftool &> /dev/null; then
+LOCAL_OVFTOOL="./ovftool/ovftool"
+if [ -x "$LOCAL_OVFTOOL" ]; then
+    OVFTOOL_VERSION=$($LOCAL_OVFTOOL --version 2>&1 | head -1)
+    echo "✓ Found local ovftool: $OVFTOOL_VERSION"
+elif command -v ovftool &> /dev/null; then
     OVFTOOL_VERSION=$(ovftool --version 2>&1 | head -1)
-    echo "✓ Found $OVFTOOL_VERSION"
+    echo "✓ Found system ovftool: $OVFTOOL_VERSION"
 else
-    echo "⚠ WARNING: ovftool not found in PATH"
-    echo "  Please install VMware ovftool from:"
-    echo "  https://developer.vmware.com/tools/ovftool"
+    echo "⚠ WARNING: ovftool not found"
+    echo ""
+    echo "  To install locally (Recommended):"
+    echo "    1. Download from: https://developer.vmware.com/tools/ovftool"
+    echo "    2. Extract files to ./ovftool/ directory"
+    echo "    3. See ovftool/README.md for details"
+    echo "    4. Run: ./check_ovftool.sh to verify"
     echo ""
     echo "  This application will not work without ovftool!"
     echo ""
