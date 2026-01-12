@@ -58,6 +58,114 @@
 </div>
 {% endif %}
 
+<!-- Deployment Requirements Summary -->
+<div class="card" style="border-left: 4px solid #e74c3c;">
+    <h2 style="color: #e74c3c;">🔴 Mandatory Parameters</h2>
+    <p>These fields <strong>MUST</strong> be configured for successful deployment:</p>
+
+    <h3 style="margin-top: 20px; font-size: 16px;">VM Configuration</h3>
+    <ul style="margin-left: 20px;">
+        <li><strong>VM Name *</strong> - Unique identifier for the virtual machine</li>
+    </ul>
+
+    <h3 style="margin-top: 20px; font-size: 16px;">ESXi Connection *</h3>
+    <ul style="margin-left: 20px;">
+        <li><strong>ESXi Host *</strong> - IP address or hostname of your ESXi server</li>
+        <li><strong>Username *</strong> - ESXi login username (typically "root")</li>
+        <li><strong>Password *</strong> - ESXi login password</li>
+        <li><strong>Datastore *</strong> - Storage location where VM files will be stored</li>
+    </ul>
+
+    {% if analysis.networks %}
+    <h3 style="margin-top: 20px; font-size: 16px;">Network Mappings * ({{ analysis.networks | length }} adapters)</h3>
+    <p style="margin-left: 20px; margin-bottom: 10px;"><em>All network adapters must be mapped to ESXi networks:</em></p>
+    <table style="margin-left: 20px; width: calc(100% - 40px);">
+        <thead>
+            <tr>
+                <th>OVA Network</th>
+                <th>Description</th>
+                <th>Required</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for network in analysis.networks %}
+            <tr>
+                <td><strong><code>{{ network.name }}</code></strong></td>
+                <td>{{ network.description or 'Network adapter' }}</td>
+                <td><span class="badge badge-danger">REQUIRED</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="margin-left: 20px; margin-top: 10px; font-size: 14px; color: #666;">
+        <strong>Tip:</strong> You can map multiple OVA networks to the same ESXi network (e.g., all to "VM Network")
+    </p>
+    {% endif %}
+
+    {% if analysis.mandatory_fields and analysis.mandatory_fields.properties %}
+    <h3 style="margin-top: 20px; font-size: 16px;">Required OVF Properties</h3>
+    <ul style="margin-left: 20px;">
+        {% for prop in analysis.mandatory_fields.properties %}
+        <li><strong>{{ prop.label }} *</strong> ({{ prop.type }}) - {{ prop.description or 'Required parameter' }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+
+<div class="card" style="border-left: 4px solid #27ae60;">
+    <h2 style="color: #27ae60;">✅ Amendable/Optional Parameters</h2>
+    <p>These settings can be modified based on your requirements:</p>
+
+    {% if analysis.amendable_fields and analysis.amendable_fields.hardware %}
+    <h3 style="margin-top: 20px; font-size: 16px;">Hardware Configuration</h3>
+    <table style="margin-left: 20px; width: calc(100% - 40px);">
+        <thead>
+            <tr>
+                <th>Parameter</th>
+                <th>Current Value</th>
+                <th>Modifiable</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if analysis.amendable_fields.hardware.cpus %}
+            <tr>
+                <td>{{ analysis.amendable_fields.hardware.cpus.field }}</td>
+                <td>{{ analysis.amendable_fields.hardware.cpus.current_value }}</td>
+                <td><span class="badge badge-success">Can modify</span></td>
+            </tr>
+            {% endif %}
+            {% if analysis.amendable_fields.hardware.memory %}
+            <tr>
+                <td>{{ analysis.amendable_fields.hardware.memory.field }}</td>
+                <td>{{ analysis.amendable_fields.hardware.memory.current_value }}</td>
+                <td><span class="badge badge-success">Can modify</span></td>
+            </tr>
+            {% endif %}
+            {% if analysis.amendable_fields.hardware.disks %}
+            <tr>
+                <td>{{ analysis.amendable_fields.hardware.disks.field }}</td>
+                <td>{{ analysis.amendable_fields.hardware.disks.current_value }}</td>
+                <td><span class="badge badge-secondary">Fixed</span></td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if analysis.amendable_fields and analysis.amendable_fields.deployment_settings %}
+    <h3 style="margin-top: 20px; font-size: 16px;">Deployment Settings</h3>
+    <ul style="margin-left: 20px;">
+        {% for key, setting in analysis.amendable_fields.deployment_settings.items() %}
+        <li><strong>{{ setting.field }}</strong> - {{ setting.description }}
+            {% if setting.options %}
+            <br><small>Options: {{ setting.options | join(', ') }}</small>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+
 <div class="card">
     <h2>Hardware Specifications</h2>
     <table>
@@ -93,20 +201,24 @@
 
 {% if analysis.networks %}
 <div class="card">
-    <h2>Network Adapters</h2>
-    <p>This OVA requires the following network mappings:</p>
+    <h2>Network Adapters Details</h2>
+    <p>This OVA requires {{ analysis.networks | length }} network adapter(s):</p>
     <table>
         <thead>
             <tr>
+                <th>#</th>
                 <th>OVA Network Name</th>
                 <th>Description</th>
+                <th>Status</th>
             </tr>
         </thead>
         <tbody>
             {% for network in analysis.networks %}
             <tr>
-                <td><code>{{ network.name }}</code></td>
-                <td>Must be mapped to an ESXi network during deployment</td>
+                <td>{{ loop.index }}</td>
+                <td><strong><code>{{ network.name }}</code></strong></td>
+                <td>{{ network.description or 'Network adapter' }}</td>
+                <td><span class="badge badge-danger">Required</span></td>
             </tr>
             {% endfor %}
         </tbody>

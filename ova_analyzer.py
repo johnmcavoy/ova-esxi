@@ -61,21 +61,29 @@ class OVAAnalyzer:
                 timeout=300  # 5 minutes timeout
             )
 
+            output_text = result.stdout + result.stderr
+            properties = self._extract_properties(output_text)
+            networks = self._extract_networks(output_text)
+            hardware = self._extract_hardware(output_text)
+
             analysis = {
                 'file_path': ova_path,
                 'file_name': Path(ova_path).name,
                 'valid': result.returncode == 0,
-                'output': result.stdout + result.stderr,
-                'properties': self._extract_properties(result.stdout + result.stderr),
-                'networks': self._extract_networks(result.stdout + result.stderr),
-                'hardware': self._extract_hardware(result.stdout + result.stderr),
-                'deployment_options': self._extract_deployment_options(result.stdout + result.stderr),
-                'requires_vcenter': self._check_vcenter_requirement(result.stdout + result.stderr),
-                'warnings': self._extract_warnings(result.stdout + result.stderr),
-                'errors': self._extract_errors(result.stdout + result.stderr)
+                'output': output_text,
+                'properties': properties,
+                'networks': networks,
+                'hardware': hardware,
+                'deployment_options': self._extract_deployment_options(output_text),
+                'requires_vcenter': self._check_vcenter_requirement(output_text),
+                'warnings': self._extract_warnings(output_text),
+                'errors': self._extract_errors(output_text),
+                'mandatory_fields': self._get_mandatory_fields(properties, networks),
+                'amendable_fields': self._get_amendable_fields(hardware)
             }
 
-            logger.info(f"Analysis complete. Valid: {analysis['valid']}, Properties: {len(analysis['properties'])}")
+            logger.info(f"Analysis complete. Valid: {analysis['valid']}, "
+                       f"Properties: {len(properties)}, Networks: {len(networks)}")
 
             return analysis
 
@@ -146,16 +154,47 @@ class OVAAnalyzer:
         """Extract network mappings from ovftool output"""
         networks = []
 
-        # Pattern: Network "NetworkName"
-        network_pattern = re.compile(r'Network\s+"([^"]+)"', re.IGNORECASE)
+        # Pattern: Network "NetworkName" with optional description
+        # Look for network blocks in the output
+        lines = output.split('\n')
+        i = 0
+        while i < len(lines):
+            line = lines[i]
 
-        for match in network_pattern.finditer(output):
-            network_name = match.group(1)
-            if network_name not in [n['name'] for n in networks]:
-                networks.append({
-                    'name': network_name,
-                    'target': ''  # To be filled by user
-                })
+            # Match network name
+            network_match = re.search(r'^\s*Name:\s+(.+?)$', line)
+            if network_match and i > 0 and 'Networks:' in lines[i-1]:
+                network_name = network_match.group(1).strip()
+                description = ''
+
+                # Check next line for description
+                if i + 1 < len(lines):
+                    desc_match = re.search(r'^\s*Description:\s+(.+?)$', lines[i + 1])
+                    if desc_match:
+                        description = desc_match.group(1).strip()
+
+                # Avoid duplicates
+                if network_name not in [n['name'] for n in networks]:
+                    networks.append({
+                        'name': network_name,
+                        'description': description,
+                        'target': '',  # To be filled by user
+                        'required': True  # All network mappings are required
+                    })
+            i += 1
+
+        # Fallback: simple pattern matching if structured parsing didn't work
+        if not networks:
+            network_pattern = re.compile(r'Network\s+"([^"]+)"', re.IGNORECASE)
+            for match in network_pattern.finditer(output):
+                network_name = match.group(1)
+                if network_name not in [n['name'] for n in networks]:
+                    networks.append({
+                        'name': network_name,
+                        'description': '',
+                        'target': '',
+                        'required': True
+                    })
 
         return networks
 
@@ -255,6 +294,107 @@ class OVAAnalyzer:
                 errors.append(error)
 
         return errors
+
+    def _get_mandatory_fields(self, properties: List[Dict], networks: List[Dict]) -> Dict:
+        """
+        Identify mandatory fields that must be configured for deployment
+
+        Returns:
+            Dictionary categorizing mandatory fields
+        """
+        mandatory = {
+            'vm_name': {
+                'field': 'VM Name',
+                'description': 'Unique name for the virtual machine',
+                'required': True
+            },
+            'esxi_connection': {
+                'host': {'field': 'ESXi Host', 'description': 'IP address or hostname', 'required': True},
+                'username': {'field': 'Username', 'description': 'ESXi login username', 'required': True},
+                'password': {'field': 'Password', 'description': 'ESXi login password', 'required': True},
+                'datastore': {'field': 'Datastore', 'description': 'Storage location for VM files', 'required': True}
+            },
+            'networks': [],
+            'properties': []
+        }
+
+        # All networks are mandatory
+        for network in networks:
+            mandatory['networks'].append({
+                'name': network['name'],
+                'description': network.get('description', 'Network adapter'),
+                'required': True
+            })
+
+        # Required OVF properties
+        for prop in properties:
+            if prop.get('required', False):
+                mandatory['properties'].append({
+                    'key': prop['key'],
+                    'label': prop['label'],
+                    'type': prop['type'],
+                    'description': prop.get('description', ''),
+                    'required': True
+                })
+
+        return mandatory
+
+    def _get_amendable_fields(self, hardware: Dict) -> Dict:
+        """
+        Identify fields that can be modified but are not required
+
+        Returns:
+            Dictionary of amendable/optional fields
+        """
+        amendable = {
+            'hardware': {},
+            'deployment_settings': {}
+        }
+
+        # Hardware can be modified
+        if hardware.get('cpus'):
+            amendable['hardware']['cpus'] = {
+                'field': 'Virtual CPUs',
+                'current_value': hardware['cpus'],
+                'amendable': True,
+                'description': 'Number of virtual CPU cores'
+            }
+
+        if hardware.get('memory_mb'):
+            amendable['hardware']['memory'] = {
+                'field': 'Memory',
+                'current_value': f"{hardware['memory_mb']} MB",
+                'amendable': True,
+                'description': 'Amount of RAM allocated to the VM'
+            }
+
+        if hardware.get('disks'):
+            amendable['hardware']['disks'] = {
+                'field': 'Virtual Disks',
+                'current_value': f"{len(hardware['disks'])} disk(s)",
+                'amendable': False,  # Disk count typically fixed
+                'description': 'Virtual disk configuration (size usually fixed)'
+            }
+
+        # Deployment settings
+        amendable['deployment_settings'] = {
+            'disk_mode': {
+                'field': 'Disk Provisioning',
+                'options': ['thin', 'thick', 'eagerZeroedThick'],
+                'default': 'thin',
+                'amendable': True,
+                'description': 'How disk space is allocated'
+            },
+            'power_on': {
+                'field': 'Power On After Deployment',
+                'options': [True, False],
+                'default': False,
+                'amendable': True,
+                'description': 'Automatically power on VM after deployment'
+            }
+        }
+
+        return amendable
 
     def get_full_probe(self, ova_path: str) -> str:
         """

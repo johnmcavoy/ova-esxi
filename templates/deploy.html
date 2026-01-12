@@ -120,17 +120,49 @@
         <!-- Network Mappings -->
         {% if analysis.networks %}
         <div class="section">
-            <h3>Network Mappings</h3>
-            <p>Map OVA networks to your ESXi networks:</p>
+            <h3>Network Mappings * ({{ analysis.networks | length }} Required)</h3>
+            <p>Map OVA networks to your ESXi networks. <strong>All mappings are required.</strong></p>
 
-            {% for network in analysis.networks %}
-            <div class="form-group">
-                <label for="network_{{ loop.index }}">{{ network.name }} *</label>
-                <input type="text" id="network_{{ loop.index }}" name="network_{{ network.name }}"
-                       value="{{ esxi_config.network }}" placeholder="VM Network" required>
-                <small>Target network on ESXi for "{{ network.name }}"</small>
+            {% if analysis.networks | length > 1 %}
+            <div class="alert alert-info" style="margin-bottom: 20px;">
+                <strong>Quick Assign:</strong> Map all networks to the same ESXi network:
+                <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="bulkNetworkAssign" placeholder="e.g., VM Network" style="flex: 1; padding: 8px;">
+                    <button type="button" onclick="applyBulkNetwork()" class="btn btn-small">Apply to All</button>
+                </div>
             </div>
-            {% endfor %}
+            {% endif %}
+
+            <div style="background: #f8f9fa; padding: 16px; border-radius: 4px;">
+                {% for network in analysis.networks %}
+                <div class="form-group" style="background: white; padding: 12px; border-radius: 4px; margin-bottom: 12px;">
+                    <label for="network_{{ loop.index }}" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: #3498db; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px;">{{ loop.index }}</span>
+                        <strong>{{ network.name }}</strong>
+                        <span class="badge badge-danger">REQUIRED</span>
+                    </label>
+                    {% if network.description %}
+                    <div style="margin-bottom: 8px; color: #666; font-size: 14px;">
+                        <em>{{ network.description }}</em>
+                    </div>
+                    {% endif %}
+                    <input type="text" id="network_{{ loop.index }}" name="network_{{ network.name }}"
+                           class="network-mapping-input"
+                           value="{{ esxi_config.network }}" placeholder="VM Network" required
+                           style="width: 100%;">
+                    <small style="display: block; margin-top: 4px;">ESXi target network for this adapter</small>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div style="margin-top: 12px; padding: 12px; background: #fff3cd; border-radius: 4px;">
+                <strong>💡 Network Mapping Tips:</strong>
+                <ul style="margin: 8px 0 0 20px; font-size: 14px;">
+                    <li>You can map all networks to the same ESXi network (e.g., "VM Network")</li>
+                    <li>For separated traffic, use different networks (e.g., "Management", "Data Network")</li>
+                    <li>Network names are case-sensitive and must exist on your ESXi server</li>
+                </ul>
+            </div>
         </div>
         {% endif %}
 
@@ -214,6 +246,25 @@
 
 {% block extra_js %}
 <script>
+    // Bulk network assignment function
+    function applyBulkNetwork() {
+        const bulkValue = document.getElementById('bulkNetworkAssign').value.trim();
+        if (!bulkValue) {
+            alert('Please enter a network name');
+            return;
+        }
+
+        // Apply to all network mapping inputs
+        const networkInputs = document.querySelectorAll('.network-mapping-input');
+        networkInputs.forEach(input => {
+            input.value = bulkValue;
+        });
+
+        // Show confirmation
+        const count = networkInputs.length;
+        alert(`✓ Applied "${bulkValue}" to all ${count} network adapters`);
+    }
+
     // Handle naming type change
     document.getElementById('naming_type').addEventListener('change', function() {
         const staticContainer = document.getElementById('staticNamesContainer');
