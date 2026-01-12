@@ -164,7 +164,7 @@
     function updateJobsDisplay(jobs) {
         const container = document.getElementById('jobsContainer');
         if (jobs.length === 0) {
-            container.innerHTML = '<p>No deployment jobs found. <a href="{{ url_for(\'index\') }}">Deploy an OVA</a> to get started.</p>';
+            container.innerHTML = '<p>No deployment jobs found. <a href="{{ url_for("index") }}">Deploy an OVA</a> to get started.</p>';
             return;
         }
 
