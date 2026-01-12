@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Deploy - {{ filename }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .section {
+        margin-bottom: 30px;
+    }
+    .section h3 {
+        margin-bottom: 16px;
+        color: #2c3e50;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 8px;
+    }
+    #staticNamesContainer {
+        display: none;
+    }
+    .name-input {
+        margin-bottom: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Deploy OVA: {{ filename }}</h2>
+
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Home</a>
+        <a href="{{ url_for('analyze_ova', filename=filename) }}" class="btn">View Analysis</a>
+    </div>
+
+    {% if analysis.requires_vcenter %}
+        <div class="alert alert-warning">
+            <strong>⚠ Warning:</strong> This OVA may require vCenter and might fail to deploy to standalone ESXi
+        </div>
+    {% endif %}
+
+    <form id="deployForm">
+        <input type="hidden" name="filename" value="{{ filename }}">
+
+        <!-- Deployment Configuration -->
+        <div class="section">
+            <h3>Deployment Configuration</h3>
+
+            <div class="form-group">
+                <label for="vm_base_name">VM Base Name *</label>
+                <input type="text" id="vm_base_name" name="vm_base_name" value="VM" required>
+                <small>Base name for the virtual machine(s)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="vm_count">Number of VMs to Deploy *</label>
+                <input type="number" id="vm_count" name="vm_count" value="1" min="1" max="100" required>
+                <small>Deploy multiple instances of this OVA (1-100)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="naming_type">Naming Strategy *</label>
+                <select id="naming_type" name="naming_type" required>
+                    <option value="dynamic">Dynamic Naming (auto-generated with timestamp)</option>
+                    <option value="static">Static Naming (specify custom names)</option>
+                </select>
+                <small>Choose how to name your VMs</small>
+            </div>
+
+            <div id="staticNamesContainer">
+                <div class="form-group">
+                    <label>Custom VM Names</label>
+                    <div id="nameInputs"></div>
+                    <small>Provide custom names for each VM. If not specified, will use base name with counter.</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- ESXi Configuration -->
+        <div class="section">
+            <h3>ESXi Server Configuration</h3>
+
+            <div class="form-group">
+                <label for="esxi_host">ESXi Host *</label>
+                <input type="text" id="esxi_host" name="esxi_host" value="{{ esxi_config.host }}" placeholder="192.168.1.100" required>
+                <small>IP address or hostname of your ESXi server</small>
+            </div>
+
+            <div class="form-group">
+                <label for="esxi_username">Username *</label>
+                <input type="text" id="esxi_username" name="esxi_username" value="{{ esxi_config.username }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="esxi_password">Password *</label>
+                <input type="password" id="esxi_password" name="esxi_password" value="{{ esxi_config.password }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="esxi_datastore">Datastore *</label>
+                <input type="text" id="esxi_datastore" name="esxi_datastore" value="{{ esxi_config.datastore }}" required>
+                <small>Datastore name on your ESXi server</small>
+            </div>
+
+            <div class="form-group">
+                <label for="disk_mode">Disk Provisioning Mode *</label>
+                <select id="disk_mode" name="disk_mode" required>
+                    <option value="thin" {% if esxi_config.disk_mode == 'thin' %}selected{% endif %}>Thin Provisioning</option>
+                    <option value="thick" {% if esxi_config.disk_mode == 'thick' %}selected{% endif %}>Thick Provisioning</option>
+                    <option value="eagerZeroedThick" {% if esxi_config.disk_mode == 'eagerZeroedThick' %}selected{% endif %}>Thick Eager Zeroed</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="power_on" name="power_on" {% if esxi_config.power_on %}checked{% endif %}>
+                    Power on VM after deployment
+                </label>
+            </div>
+        </div>
+
+        <!-- Network Mappings -->
+        {% if analysis.networks %}
+        <div class="section">
+            <h3>Network Mappings</h3>
+            <p>Map OVA networks to your ESXi networks:</p>
+
+            {% for network in analysis.networks %}
+            <div class="form-group">
+                <label for="network_{{ loop.index }}">{{ network.name }} *</label>
+                <input type="text" id="network_{{ loop.index }}" name="network_{{ network.name }}"
+                       value="{{ esxi_config.network }}" placeholder="VM Network" required>
+                <small>Target network on ESXi for "{{ network.name }}"</small>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- OVF Properties -->
+        {% if analysis.properties %}
+        <div class="section">
+            <h3>OVF Properties</h3>
+            <p>Configure OVA-specific properties:</p>
+
+            {% for prop in analysis.properties %}
+            <div class="form-group">
+                <label for="prop_{{ prop.key }}">
+                    {{ prop.label }}
+                    {% if prop.required %}
+                        <span class="badge badge-danger">Required</span>
+                    {% endif %}
+                </label>
+
+                {% if prop.type == 'password' %}
+                    <input type="password" id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
+                           {% if prop.required %}required{% endif %}>
+                {% elif prop.type == 'boolean' %}
+                    <select id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
+                            {% if prop.required %}required{% endif %}>
+                        <option value="">-- Select --</option>
+                        <option value="True">True</option>
+                        <option value="False">False</option>
+                    </select>
+                {% else %}
+                    <input type="text" id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
+                           {% if prop.required %}required{% endif %}>
+                {% endif %}
+
+                {% if prop.description %}
+                    <small>{{ prop.description }}</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Deployment Options -->
+        {% if analysis.deployment_options %}
+        <div class="section">
+            <h3>Deployment Option</h3>
+            <div class="form-group">
+                <label for="deployment_option">Configuration</label>
+                <select id="deployment_option" name="deployment_option">
+                    <option value="">-- Default --</option>
+                    {% for option in analysis.deployment_options %}
+                    <option value="{{ option.id }}">{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+            <button type="submit" class="btn btn-success" style="font-size: 16px; padding: 12px 30px;">
+                Start Deployment
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ url_for('index') }}'">
+                Cancel
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Deployment Status Modal -->
+<div id="deploymentModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%;">
+        <h2>Deployment in Progress</h2>
+        <div id="deploymentStatus"></div>
+        <div style="margin-top: 20px;">
+            <a href="{{ url_for('jobs_list') }}" class="btn">View All Deployments</a>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('deploymentModal').style.display='none'">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Handle naming type change
+    document.getElementById('naming_type').addEventListener('change', function() {
+        const staticContainer = document.getElementById('staticNamesContainer');
+        const vmCount = parseInt(document.getElementById('vm_count').value) || 1;
+
+        if (this.value === 'static') {
+            staticContainer.style.display = 'block';
+            updateNameInputs(vmCount);
+        } else {
+            staticContainer.style.display = 'none';
+        }
+    });
+
+    // Handle VM count change
+    document.getElementById('vm_count').addEventListener('change', function() {
+        const namingType = document.getElementById('naming_type').value;
+        if (namingType === 'static') {
+            updateNameInputs(parseInt(this.value) || 1);
+        }
+    });
+
+    // Update name inputs based on count
+    function updateNameInputs(count) {
+        const container = document.getElementById('nameInputs');
+        container.innerHTML = '';
+
+        for (let i = 1; i <= count; i++) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'name-input';
+            input.name = `custom_name_${i}`;
+            input.placeholder = `VM ${i} name`;
+            input.style.width = '100%';
+            input.style.padding = '8px';
+            input.style.marginBottom = '8px';
+            input.style.border = '1px solid #ddd';
+            input.style.borderRadius = '4px';
+            container.appendChild(input);
+        }
+    }
+
+    // Handle form submission
+    document.getElementById('deployForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const data = {
+            filename: formData.get('filename'),
+            vm_base_name: formData.get('vm_base_name'),
+            vm_count: parseInt(formData.get('vm_count')),
+            naming_type: formData.get('naming_type'),
+            custom_names: [],
+            esxi_config: {
+                host: formData.get('esxi_host'),
+                username: formData.get('esxi_username'),
+                password: formData.get('esxi_password'),
+                datastore: formData.get('esxi_datastore'),
+                disk_mode: formData.get('disk_mode'),
+                power_on: formData.get('power_on') === 'on',
+                deployment_option: formData.get('deployment_option') || null
+            },
+            properties: {},
+            network_mappings: {}
+        };
+
+        // Collect custom names
+        if (data.naming_type === 'static') {
+            for (let i = 1; i <= data.vm_count; i++) {
+                const name = formData.get(`custom_name_${i}`);
+                if (name) {
+                    data.custom_names.push(name);
+                }
+            }
+        }
+
+        // Collect network mappings
+        {% if analysis.networks %}
+        {% for network in analysis.networks %}
+        data.network_mappings['{{ network.name }}'] = formData.get('network_{{ network.name }}');
+        {% endfor %}
+        {% endif %}
+
+        // Collect properties
+        {% if analysis.properties %}
+        {% for prop in analysis.properties %}
+        const prop_{{ prop.key|replace('-', '_')|replace('.', '_') }} = formData.get('prop_{{ prop.key }}');
+        if (prop_{{ prop.key|replace('-', '_')|replace('.', '_') }}) {
+            data.properties['{{ prop.key }}'] = prop_{{ prop.key|replace('-', '_')|replace('.', '_') }};
+        }
+        {% endfor %}
+        {% endif %}
+
+        // Submit deployment
+        fetch('/api/deploy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                document.getElementById('deploymentStatus').innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>Success!</strong><br>
+                        Started deployment of ${result.vm_names.length} VM(s):<br>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            ${result.vm_names.map(name => '<li>' + name + '</li>').join('')}
+                        </ul>
+                        <p style="margin-top: 10px;">
+                            Job IDs: ${result.job_ids.join(', ')}
+                        </p>
+                    </div>
+                `;
+                document.getElementById('deploymentModal').style.display = 'block';
+            } else {
+                alert('Deployment failed: ' + (result.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    });
+</script>
+{% endblock %}

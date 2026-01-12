@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis - {{ filename }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>OVA Analysis: {{ filename }}</h2>
+
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Home</a>
+        <a href="{{ url_for('deploy_form', filename=filename) }}" class="btn btn-success">Deploy This OVA</a>
+    </div>
+
+    {% if analysis.valid %}
+        <div class="alert alert-success">
+            <strong>✓ Valid OVA File</strong> - This file can be deployed
+        </div>
+    {% else %}
+        <div class="alert alert-error">
+            <strong>✗ Invalid OVA File</strong> - Issues found during analysis
+        </div>
+    {% endif %}
+
+    {% if analysis.requires_vcenter %}
+        <div class="alert alert-warning">
+            <strong>⚠ Possible vCenter Requirement</strong> - This OVA may require vCenter Server and might not deploy to standalone ESXi
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <strong>ℹ Standalone ESXi Compatible</strong> - This OVA should deploy to standalone ESXi servers
+        </div>
+    {% endif %}
+</div>
+
+{% if analysis.errors %}
+<div class="card">
+    <h2>Errors</h2>
+    <div class="alert alert-error">
+        <ul style="margin-left: 20px;">
+            {% for error in analysis.errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+{% if analysis.warnings %}
+<div class="card">
+    <h2>Warnings</h2>
+    <div class="alert alert-warning">
+        <ul style="margin-left: 20px;">
+            {% for warning in analysis.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Hardware Specifications</h2>
+    <table>
+        <tr>
+            <th>Component</th>
+            <th>Value</th>
+        </tr>
+        {% if analysis.hardware.cpus %}
+        <tr>
+            <td>Virtual CPUs</td>
+            <td>{{ analysis.hardware.cpus }}</td>
+        </tr>
+        {% endif %}
+        {% if analysis.hardware.memory_mb %}
+        <tr>
+            <td>Memory</td>
+            <td>{{ analysis.hardware.memory_mb }} MB ({{ (analysis.hardware.memory_mb / 1024) | round(2) }} GB)</td>
+        </tr>
+        {% endif %}
+        {% if analysis.hardware.disks %}
+        <tr>
+            <td>Disks</td>
+            <td>
+                {{ analysis.hardware.disks | length }} disk(s)
+                {% for disk in analysis.hardware.disks %}
+                    <br>- Disk {{ loop.index }}: {{ disk.size_gb }} GB
+                {% endfor %}
+            </td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if analysis.networks %}
+<div class="card">
+    <h2>Network Adapters</h2>
+    <p>This OVA requires the following network mappings:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>OVA Network Name</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for network in analysis.networks %}
+            <tr>
+                <td><code>{{ network.name }}</code></td>
+                <td>Must be mapped to an ESXi network during deployment</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if analysis.properties %}
+<div class="card">
+    <h2>OVF Properties ({{ analysis.properties | length }})</h2>
+    <p>These properties can be configured during deployment:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Property Key</th>
+                <th>Label</th>
+                <th>Type</th>
+                <th>Required</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for prop in analysis.properties %}
+            <tr>
+                <td><code>{{ prop.key }}</code></td>
+                <td>{{ prop.label }}</td>
+                <td><span class="badge badge-info">{{ prop.type }}</span></td>
+                <td>
+                    {% if prop.required %}
+                        <span class="badge badge-danger">Required</span>
+                    {% else %}
+                        <span class="badge badge-secondary">Optional</span>
+                    {% endif %}
+                </td>
+                <td>{{ prop.description or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <h2>OVF Properties</h2>
+    <p>No configurable properties found in this OVA.</p>
+</div>
+{% endif %}
+
+{% if analysis.deployment_options %}
+<div class="card">
+    <h2>Deployment Options</h2>
+    <p>This OVA supports the following deployment configurations:</p>
+    <ul>
+        {% for option in analysis.deployment_options %}
+        <li><strong>{{ option.label }}</strong> ({{ option.id }})</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Raw Analysis Output</h2>
+    <details>
+        <summary style="cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+            Click to view raw ovftool output
+        </summary>
+        <pre style="background: #f8f9fa; padding: 16px; border-radius: 4px; overflow-x: auto; margin-top: 10px;">{{ analysis.output }}</pre>
+    </details>
+</div>
+{% endblock %}

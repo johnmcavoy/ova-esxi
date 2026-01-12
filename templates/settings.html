@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>ESXi Default Settings</h2>
+    <p>Configure default settings for ESXi connections. These can be overridden during deployment.</p>
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="esxi_host">ESXi Host</label>
+            <input type="text" id="esxi_host" name="esxi_host" value="{{ settings.esxi_host }}" placeholder="192.168.1.100">
+            <small>IP address or hostname of your ESXi server</small>
+        </div>
+
+        <div class="form-group">
+            <label for="esxi_username">Username</label>
+            <input type="text" id="esxi_username" name="esxi_username" value="{{ settings.esxi_username }}" placeholder="root">
+            <small>ESXi login username (usually "root")</small>
+        </div>
+
+        <div class="form-group">
+            <label for="esxi_password">Password</label>
+            <input type="password" id="esxi_password" name="esxi_password" value="{{ settings.esxi_password }}">
+            <small>ESXi login password</small>
+        </div>
+
+        <div class="form-group">
+            <label for="esxi_datastore">Default Datastore</label>
+            <input type="text" id="esxi_datastore" name="esxi_datastore" value="{{ settings.esxi_datastore }}" placeholder="datastore1">
+            <small>Default datastore for VM deployment</small>
+        </div>
+
+        <div class="form-group">
+            <label for="esxi_network">Default Network</label>
+            <input type="text" id="esxi_network" name="esxi_network" value="{{ settings.esxi_network }}" placeholder="VM Network">
+            <small>Default network for VM connections</small>
+        </div>
+
+        <button type="submit" class="btn btn-success">Save Settings</button>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+
+<div class="card">
+    <h2>About</h2>
+    <p>OVA ESXi Deployer is a web application for analyzing and deploying OVA files to standalone ESXi servers.</p>
+
+    <h3 style="margin-top: 20px; margin-bottom: 10px;">Features</h3>
+    <ul style="margin-left: 20px;">
+        <li>Upload and store OVA files</li>
+        <li>Analyze OVA parameters and requirements</li>
+        <li>Identify standalone ESXi vs vCenter requirements</li>
+        <li>Deploy OVAs with customizable parameters</li>
+        <li>Support for multiple simultaneous deployments</li>
+        <li>Dynamic and static VM naming strategies</li>
+        <li>Real-time deployment progress monitoring</li>
+    </ul>
+
+    <h3 style="margin-top: 20px; margin-bottom: 10px;">Requirements</h3>
+    <ul style="margin-left: 20px;">
+        <li>VMware ovftool (download from <a href="https://developer.vmware.com/tools/ovftool" target="_blank">VMware Developer Portal</a>)</li>
+        <li>Python 3.8 or higher</li>
+        <li>Flask web framework</li>
+        <li>Network access to ESXi server</li>
+    </ul>
+
+    <h3 style="margin-top: 20px; margin-bottom: 10px;">Security Notes</h3>
+    <ul style="margin-left: 20px;">
+        <li>Passwords are stored in session only and not persisted</li>
+        <li>Use HTTPS in production environments</li>
+        <li>Consider using environment variables for credentials</li>
+        <li>Restrict network access to trusted users</li>
+    </ul>
+</div>
+{% endblock %}

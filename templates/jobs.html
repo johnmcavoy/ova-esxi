@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Deployment Jobs{% endblock %}
+
+{% block extra_css %}
+<style>
+    .job-output {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+    .job-output div {
+        margin-bottom: 4px;
+    }
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .progress-fill {
+        height: 100%;
+        background: #28a745;
+        transition: width 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Deployment Jobs</h2>
+
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Home</a>
+        <button onclick="refreshJobs()" class="btn">Refresh</button>
+    </div>
+
+    <div id="jobsContainer">
+        {% if jobs %}
+            {% for job in jobs %}
+            <div class="card" style="margin-bottom: 16px; border-left: 4px solid
+                {% if job.status == 'completed' %}#28a745
+                {% elif job.status == 'failed' %}#dc3545
+                {% elif job.status == 'running' %}#007bff
+                {% else %}#6c757d{% endif %}">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="margin: 0;">{{ job.vm_name }}</h3>
+                    <span class="badge
+                        {% if job.status == 'completed' %}badge-success
+                        {% elif job.status == 'failed' %}badge-danger
+                        {% elif job.status == 'running' %}badge-info
+                        {% else %}badge-secondary{% endif %}">
+                        {{ job.status | upper }}
+                    </span>
+                </div>
+
+                <table style="margin-bottom: 12px;">
+                    <tr>
+                        <td style="width: 150px;"><strong>Job ID:</strong></td>
+                        <td><code>{{ job.job_id }}</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>OVA File:</strong></td>
+                        <td>{{ job.ova_path.split('/')[-1] }}</td>
+                    </tr>
+                    {% if job.started_at %}
+                    <tr>
+                        <td><strong>Started:</strong></td>
+                        <td>{{ job.started_at[:19] }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if job.completed_at %}
+                    <tr>
+                        <td><strong>Completed:</strong></td>
+                        <td>{{ job.completed_at[:19] }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if job.error %}
+                    <tr>
+                        <td><strong>Error:</strong></td>
+                        <td style="color: #dc3545;">{{ job.error }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+
+                {% if job.status in ['running', 'completed'] %}
+                <div style="margin-bottom: 12px;">
+                    <strong>Progress:</strong>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ job.progress }}%;">
+                            {{ job.progress }}%
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if job.output %}
+                <details>
+                    <summary style="cursor: pointer; padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 8px;">
+                        View Output ({{ job.output | length }} lines)
+                    </summary>
+                    <div class="job-output">
+                        {% for line in job.output %}
+                        <div>{{ line }}</div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if job.status == 'pending' %}
+                <button onclick="cancelJob('{{ job.job_id }}')" class="btn btn-small btn-danger">Cancel</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>No deployment jobs found. <a href="{{ url_for('index') }}">Deploy an OVA</a> to get started.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh jobs every 5 seconds if any are running
+    let refreshInterval;
+
+    function checkRunningJobs() {
+        const jobs = {{ jobs | tojson }};
+        const hasRunning = jobs.some(job => job.status === 'running' || job.status === 'pending');
+
+        if (hasRunning && !refreshInterval) {
+            refreshInterval = setInterval(refreshJobs, 5000);
+        } else if (!hasRunning && refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
+    }
+
+    function refreshJobs() {
+        fetch('/api/jobs')
+            .then(response => response.json())
+            .then(jobs => {
+                updateJobsDisplay(jobs);
+                checkRunningJobs();
+            })
+            .catch(error => {
+                console.error('Error refreshing jobs:', error);
+            });
+    }
+
+    function updateJobsDisplay(jobs) {
+        const container = document.getElementById('jobsContainer');
+        if (jobs.length === 0) {
+            container.innerHTML = '<p>No deployment jobs found. <a href="{{ url_for(\'index\') }}">Deploy an OVA</a> to get started.</p>';
+            return;
+        }
+
+        let html = '';
+        jobs.forEach(job => {
+            const statusColors = {
+                'completed': '#28a745',
+                'failed': '#dc3545',
+                'running': '#007bff',
+                'pending': '#6c757d'
+            };
+
+            const statusBadges = {
+                'completed': 'badge-success',
+                'failed': 'badge-danger',
+                'running': 'badge-info',
+                'pending': 'badge-secondary'
+            };
+
+            html += `
+                <div class="card" style="margin-bottom: 16px; border-left: 4px solid ${statusColors[job.status] || '#6c757d'}">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin: 0;">${job.vm_name}</h3>
+                        <span class="badge ${statusBadges[job.status] || 'badge-secondary'}">
+                            ${job.status.toUpperCase()}
+                        </span>
+                    </div>
+
+                    <table style="margin-bottom: 12px;">
+                        <tr>
+                            <td style="width: 150px;"><strong>Job ID:</strong></td>
+                            <td><code>${job.job_id}</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>OVA File:</strong></td>
+                            <td>${job.ova_path.split('/').pop()}</td>
+                        </tr>
+                        ${job.started_at ? `<tr><td><strong>Started:</strong></td><td>${job.started_at.substring(0, 19)}</td></tr>` : ''}
+                        ${job.completed_at ? `<tr><td><strong>Completed:</strong></td><td>${job.completed_at.substring(0, 19)}</td></tr>` : ''}
+                        ${job.error ? `<tr><td><strong>Error:</strong></td><td style="color: #dc3545;">${job.error}</td></tr>` : ''}
+                    </table>
+
+                    ${(job.status === 'running' || job.status === 'completed') ? `
+                    <div style="margin-bottom: 12px;">
+                        <strong>Progress:</strong>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${job.progress}%;">
+                                ${job.progress}%
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${job.output && job.output.length > 0 ? `
+                    <details>
+                        <summary style="cursor: pointer; padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 8px;">
+                            View Output (${job.output.length} lines)
+                        </summary>
+                        <div class="job-output">
+                            ${job.output.map(line => `<div>${line}</div>`).join('')}
+                        </div>
+                    </details>
+                    ` : ''}
+
+                    ${job.status === 'pending' ? `
+                    <button onclick="cancelJob('${job.job_id}')" class="btn btn-small btn-danger">Cancel</button>
+                    ` : ''}
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function cancelJob(jobId) {
+        if (confirm('Are you sure you want to cancel this job?')) {
+            fetch(`/api/jobs/${jobId}/cancel`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    refreshJobs();
+                } else {
+                    alert('Failed to cancel job: ' + (result.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Error: ' + error);
+            });
+        }
+    }
+
+    // Start auto-refresh if needed
+    checkRunningJobs();
+</script>
+{% endblock %}
