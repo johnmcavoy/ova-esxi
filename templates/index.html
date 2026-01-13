@@ -175,29 +175,75 @@
 
         // Handle completion
         uploadXHR.addEventListener('load', function() {
-            if (uploadXHR.status === 200 || uploadXHR.status === 302) {
-                document.getElementById('uploadStatus').innerHTML = '<span style="color: #28a745;">✓ Upload Complete!</span>';
-                document.getElementById('uploadSpeed').textContent = 'Complete';
-                document.getElementById('uploadETA').textContent = '';
+            try {
+                if (uploadXHR.status === 200) {
+                    // Try to parse JSON response
+                    let response;
+                    try {
+                        response = JSON.parse(uploadXHR.responseText);
+                    } catch(e) {
+                        // Not JSON, might be HTML redirect
+                        response = { success: true };
+                    }
 
-                // Reload page after 1 second
-                setTimeout(function() {
-                    window.location.reload();
-                }, 1000);
-            } else {
+                    if (response.success) {
+                        document.getElementById('uploadStatus').innerHTML = '<span style="color: #28a745;">✓ Upload Complete!</span>';
+                        document.getElementById('uploadSpeed').textContent = 'Complete';
+                        document.getElementById('uploadETA').textContent = '';
+
+                        // Reload page after 1 second
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        throw new Error(response.error || 'Upload failed');
+                    }
+                } else {
+                    // Handle error response
+                    let errorMsg = 'Upload failed';
+                    try {
+                        const response = JSON.parse(uploadXHR.responseText);
+                        errorMsg = response.error || response.details || errorMsg;
+                    } catch(e) {
+                        errorMsg = uploadXHR.statusText || errorMsg;
+                    }
+
+                    console.error('Upload error:', errorMsg);
+                    document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Upload Failed</span>';
+                    document.getElementById('uploadBtn').style.display = 'inline-block';
+                    document.getElementById('cancelBtn').style.display = 'none';
+
+                    // Show detailed error message
+                    alert('Upload failed:\n\n' + errorMsg + '\n\nCheck the browser console (F12) for more details.');
+                }
+            } catch(e) {
+                console.error('Error handling upload response:', e);
                 document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Upload Failed</span>';
                 document.getElementById('uploadBtn').style.display = 'inline-block';
                 document.getElementById('cancelBtn').style.display = 'none';
-                alert('Upload failed: ' + uploadXHR.statusText);
+                alert('Upload failed: ' + e.message);
             }
         });
 
         // Handle errors
         uploadXHR.addEventListener('error', function() {
-            document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Upload Error</span>';
+            console.error('Upload network error occurred');
+            console.error('XHR Status:', uploadXHR.status);
+            console.error('XHR ReadyState:', uploadXHR.readyState);
+
+            document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Network Error</span>';
             document.getElementById('uploadBtn').style.display = 'inline-block';
             document.getElementById('cancelBtn').style.display = 'none';
-            alert('Upload error occurred');
+
+            let errorDetails = 'A network error occurred during upload.\n\n';
+            errorDetails += 'Possible causes:\n';
+            errorDetails += '• Network connection interrupted\n';
+            errorDetails += '• Server timeout (file too large or slow connection)\n';
+            errorDetails += '• Server not responding\n';
+            errorDetails += '• Firewall or proxy blocking the request\n\n';
+            errorDetails += 'Check the browser console (F12) and server logs for more details.';
+
+            alert(errorDetails);
         });
 
         // Handle abort
@@ -210,6 +256,9 @@
 
         // Send the request
         uploadXHR.open('POST', '{{ url_for("upload_file") }}', true);
+        uploadXHR.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+        console.log('Starting upload:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
         uploadXHR.send(formData);
     });
 

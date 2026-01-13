@@ -68,31 +68,71 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """Handle OVA file upload"""
-    if 'file' not in request.files:
-        flash('No file provided', 'error')
-        return redirect(url_for('index'))
+    try:
+        if 'file' not in request.files:
+            error_msg = 'No file provided'
+            logger.error(f"Upload error: {error_msg}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return redirect(url_for('index'))
 
-    file = request.files['file']
+        file = request.files['file']
 
-    if file.filename == '':
-        flash('No file selected', 'error')
-        return redirect(url_for('index'))
+        if file.filename == '':
+            error_msg = 'No file selected'
+            logger.error(f"Upload error: {error_msg}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return redirect(url_for('index'))
 
-    if file and allowed_file(file.filename):
+        if not file or not allowed_file(file.filename):
+            error_msg = 'Invalid file type. Only .ova files are allowed'
+            logger.error(f"Upload error: {error_msg} - File: {file.filename}")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': error_msg}), 400
+            flash(error_msg, 'error')
+            return redirect(url_for('index'))
+
         filename = secure_filename(file.filename)
         file_path = config.UPLOAD_FOLDER / filename
 
-        try:
-            file.save(file_path)
-            flash(f'File {filename} uploaded successfully', 'success')
-            logger.info(f"Uploaded file: {filename}")
-        except Exception as e:
-            flash(f'Error uploading file: {str(e)}', 'error')
-            logger.error(f"Upload error: {str(e)}")
+        logger.info(f"Starting upload: {filename} to {file_path}")
 
+        # Save file with progress tracking
+        file.save(file_path)
+
+        # Verify file was saved
+        if not file_path.exists():
+            raise Exception(f"File was not saved to {file_path}")
+
+        file_size = file_path.stat().st_size
+        logger.info(f"Upload complete: {filename} ({file_size} bytes)")
+
+        # Return JSON for AJAX requests
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'success': True,
+                'message': f'File {filename} uploaded successfully',
+                'filename': filename,
+                'size': file_size
+            })
+
+        flash(f'File {filename} uploaded successfully', 'success')
         return redirect(url_for('index'))
-    else:
-        flash('Invalid file type. Only .ova files are allowed', 'error')
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Upload error: {error_msg}", exc_info=True)
+
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'error': f'Error uploading file: {error_msg}',
+                'details': str(e)
+            }), 500
+
+        flash(f'Error uploading file: {error_msg}', 'error')
         return redirect(url_for('index'))
 
 
