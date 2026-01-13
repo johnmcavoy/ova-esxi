@@ -98,56 +98,91 @@ class OVAAnalyzer:
         """Extract OVF properties from ovftool output"""
         properties = []
 
-        # Look for property definitions
-        # Pattern: Property key="propertyId" label="Label" type="type" ...
-        property_pattern = re.compile(
-            r'Property\s+(?:key|ovf:key)="([^"]+)"[^>]*(?:label|ovf:label)="([^"]*)"[^>]*(?:type|ovf:type)="([^"]*)"',
-            re.IGNORECASE
-        )
+        # Parse the structured Properties section
+        # Format:
+        # Properties:
+        #   Key:         propertyKey
+        #   Category:    Category Name
+        #   Label:       Property Label
+        #   Type:        type
+        #   Description: Description text
+        #   Value:       default_value
 
-        # Also look for the alternative format that ovftool might output
-        prop_lines = re.finditer(r'Property:\s+(\S+)\s+\(([^)]+)\)\s*(.+)?', output, re.MULTILINE)
+        lines = output.split('\n')
+        in_properties_section = False
+        current_property = None
 
-        for match in prop_lines:
-            prop_id = match.group(1)
-            prop_type = match.group(2)
-            description = match.group(3) or ""
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
 
-            # Check if property is required
-            is_required = 'required' in description.lower() or '*' in description
+            # Detect Properties section
+            if line.startswith('Properties:'):
+                in_properties_section = True
+                i += 1
+                continue
 
-            properties.append({
-                'key': prop_id,
-                'label': prop_id.replace('_', ' ').title(),
-                'type': prop_type,
-                'description': description.strip(),
-                'required': is_required,
-                'value': ''
-            })
+            # Exit Properties section when we hit another main section
+            if in_properties_section and line and not line.startswith(' ') and ':' in line:
+                if any(section in line for section in ['Deployment Options:', 'References:', 'Virtual Machines:', 'Networks:']):
+                    in_properties_section = False
 
-        # Additional pattern matching for XML-style property definitions
-        xml_properties = property_pattern.finditer(output)
-        for match in xml_properties:
-            prop_key = match.group(1)
-            prop_label = match.group(2)
-            prop_type = match.group(3)
+            if in_properties_section and line.startswith('  '):
+                # Parse property fields
+                if line.startswith('  Key:'):
+                    # Save previous property if exists
+                    if current_property and current_property.get('key'):
+                        properties.append(current_property)
 
-            # Avoid duplicates
-            if not any(p['key'] == prop_key for p in properties):
-                properties.append({
-                    'key': prop_key,
-                    'label': prop_label or prop_key,
-                    'type': prop_type,
-                    'description': '',
-                    'required': False,
-                    'value': ''
-                })
+                    # Start new property
+                    key_value = line.split('Key:', 1)[1].strip()
+                    current_property = {
+                        'key': key_value,
+                        'label': key_value.replace('_', ' ').title(),
+                        'type': 'string',
+                        'description': '',
+                        'category': '',
+                        'required': False,
+                        'value': '',
+                        'default_value': ''
+                    }
 
-        # Look for password fields
+                elif current_property:
+                    if line.startswith('  Label:'):
+                        current_property['label'] = line.split('Label:', 1)[1].strip()
+                    elif line.startswith('  Type:'):
+                        current_property['type'] = line.split('Type:', 1)[1].strip()
+                    elif line.startswith('  Description:'):
+                        desc = line.split('Description:', 1)[1].strip()
+                        # Description might span multiple lines
+                        j = i + 1
+                        while j < len(lines) and lines[j].startswith('               '):
+                            desc += ' ' + lines[j].strip()
+                            j += 1
+                        current_property['description'] = desc
+                    elif line.startswith('  Value:'):
+                        current_property['default_value'] = line.split('Value:', 1)[1].strip()
+                        current_property['value'] = current_property['default_value']
+                    elif line.startswith('  Category:'):
+                        current_property['category'] = line.split('Category:', 1)[1].strip()
+
+            i += 1
+
+        # Don't forget the last property
+        if current_property and current_property.get('key'):
+            properties.append(current_property)
+
+        # Mark password fields
         for prop in properties:
-            if 'password' in prop['key'].lower() or 'pwd' in prop['key'].lower():
+            if 'password' in prop['type'].lower() or 'password' in prop['key'].lower():
                 prop['type'] = 'password'
 
+            # Check if required based on type (e.g., types without default values)
+            if prop['type'] and 'password' in prop['type'].lower():
+                prop['required'] = True
+
+        logger.info(f"Extracted {len(properties)} properties from OVA")
         return properties
 
     def _extract_networks(self, output: str) -> List[Dict]:
@@ -238,16 +273,66 @@ class OVAAnalyzer:
         """Extract deployment options/configurations"""
         options = []
 
-        # Look for deployment option configurations
-        config_pattern = re.compile(r'Configuration\s+"([^"]+)"', re.IGNORECASE)
+        # Parse the structured Deployment Options section
+        # Format:
+        # Deployment Options:
+        #   Id:          OptionId
+        #   Label:       Option Label
+        #   Description: Description text (can span multiple lines)
 
-        for match in config_pattern.finditer(output):
-            option_name = match.group(1)
-            options.append({
-                'id': option_name,
-                'label': option_name
-            })
+        lines = output.split('\n')
+        in_options_section = False
+        current_option = None
 
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # Detect Deployment Options section
+            if line.startswith('Deployment Options:'):
+                in_options_section = True
+                i += 1
+                continue
+
+            # Exit section when we hit another main section
+            if in_options_section and line and not line.startswith(' ') and ':' in line:
+                if any(section in line for section in ['References:', 'Virtual Machines:', 'Networks:', 'Properties:']):
+                    in_options_section = False
+
+            if in_options_section and line.startswith('  '):
+                # Parse deployment option fields
+                if line.startswith('  Id:'):
+                    # Save previous option if exists
+                    if current_option and current_option.get('id'):
+                        options.append(current_option)
+
+                    # Start new option
+                    option_id = line.split('Id:', 1)[1].strip()
+                    current_option = {
+                        'id': option_id,
+                        'label': option_id,
+                        'description': ''
+                    }
+
+                elif current_option:
+                    if line.startswith('  Label:'):
+                        current_option['label'] = line.split('Label:', 1)[1].strip()
+                    elif line.startswith('  Description:'):
+                        desc = line.split('Description:', 1)[1].strip()
+                        # Description might span multiple lines
+                        j = i + 1
+                        while j < len(lines) and lines[j].startswith('               '):
+                            desc += ' ' + lines[j].strip()
+                            j += 1
+                        current_option['description'] = desc
+
+            i += 1
+
+        # Don't forget the last option
+        if current_option and current_option.get('id'):
+            options.append(current_option)
+
+        logger.info(f"Extracted {len(options)} deployment options from OVA")
         return options
 
     def _check_vcenter_requirement(self, output: str) -> bool:

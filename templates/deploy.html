@@ -169,35 +169,61 @@
         <!-- OVF Properties -->
         {% if analysis.properties %}
         <div class="section">
-            <h3>OVF Properties</h3>
+            <h3>OVF Properties ({{ analysis.properties | length }})</h3>
             <p>Configure OVA-specific properties:</p>
 
             {% for prop in analysis.properties %}
-            <div class="form-group">
-                <label for="prop_{{ prop.key }}">
-                    {{ prop.label }}
+            <div class="form-group" style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 12px;">
+                <label for="prop_{{ prop.key }}" style="display: flex; align-items: center; gap: 8px;">
+                    <strong>{{ prop.label }}</strong>
                     {% if prop.required %}
                         <span class="badge badge-danger">Required</span>
                     {% endif %}
+                    {% if prop.category %}
+                        <span class="badge badge-info">{{ prop.category }}</span>
+                    {% endif %}
                 </label>
 
-                {% if prop.type == 'password' %}
+                {% if 'password' in prop.type %}
                     <input type="password" id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
-                           {% if prop.required %}required{% endif %}>
-                {% elif prop.type == 'boolean' %}
+                           placeholder="Enter password"
+                           {% if prop.required %}required{% endif %}
+                           style="width: 100%;">
+                {% elif 'boolean' in prop.type or prop.type == 'boolean' %}
                     <select id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
-                            {% if prop.required %}required{% endif %}>
+                            {% if prop.required %}required{% endif %}
+                            style="width: 100%;">
                         <option value="">-- Select --</option>
                         <option value="True">True</option>
                         <option value="False">False</option>
                     </select>
+                {% elif 'int' in prop.type %}
+                    <input type="number" id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
+                           value="{{ prop.default_value }}"
+                           placeholder="{{ prop.type }}"
+                           {% if prop.required %}required{% endif %}
+                           style="width: 100%;">
                 {% else %}
                     <input type="text" id="prop_{{ prop.key }}" name="prop_{{ prop.key }}"
-                           {% if prop.required %}required{% endif %}>
+                           value="{{ prop.default_value }}"
+                           placeholder="{{ prop.type }}"
+                           {% if prop.required %}required{% endif %}
+                           style="width: 100%;">
                 {% endif %}
 
                 {% if prop.description %}
-                    <small>{{ prop.description }}</small>
+                    <small style="display: block; margin-top: 6px; color: #666;">
+                        <strong>Description:</strong> {{ prop.description }}
+                    </small>
+                {% endif %}
+
+                {% if prop.type %}
+                    <small style="display: block; margin-top: 4px; color: #888;">
+                        <strong>Type:</strong> <code>{{ prop.type }}</code>
+                        {% if prop.default_value %}
+                        | <strong>Default:</strong> {{ prop.default_value }}
+                        {% endif %}
+                    </small>
                 {% endif %}
             </div>
             {% endfor %}
@@ -207,16 +233,35 @@
         <!-- Deployment Options -->
         {% if analysis.deployment_options %}
         <div class="section">
-            <h3>Deployment Option</h3>
+            <h3>Deployment Configuration Profile</h3>
+            <p>Select the deployment profile for this OVA:</p>
+
             <div class="form-group">
-                <label for="deployment_option">Configuration</label>
-                <select id="deployment_option" name="deployment_option">
-                    <option value="">-- Default --</option>
+                <label for="deployment_option">Configuration Profile *</label>
+                <select id="deployment_option" name="deployment_option" required>
+                    <option value="">-- Select Profile --</option>
                     {% for option in analysis.deployment_options %}
                     <option value="{{ option.id }}">{{ option.label }}</option>
                     {% endfor %}
                 </select>
+                <small>Choose the deployment profile that matches your requirements</small>
             </div>
+
+            {% if analysis.deployment_options %}
+            <div style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 4px;">
+                <strong>Available Profiles:</strong>
+                {% for option in analysis.deployment_options %}
+                <div style="margin-top: 10px; padding: 10px; background: white; border-left: 3px solid #3498db; border-radius: 3px;">
+                    <strong>{{ option.label }}</strong> ({{ option.id }})
+                    {% if option.description %}
+                    <div style="margin-top: 6px; font-size: 14px; color: #666;">
+                        {{ option.description }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
