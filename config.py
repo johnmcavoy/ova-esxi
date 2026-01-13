@@ -15,7 +15,7 @@ PORT = int(os.environ.get('PORT', 5000))
 
 # Upload Configuration
 UPLOAD_FOLDER = BASE_DIR / 'uploads'
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024  # 10GB max file size
+MAX_CONTENT_LENGTH = 20 * 1024 * 1024 * 1024  # 20GB max file size
 ALLOWED_EXTENSIONS = {'ova', 'ovf'}
 
 # ESXi Configuration (can be overridden via environment variables or web form)

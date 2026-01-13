@@ -19,14 +19,32 @@
 
 <div class="card">
     <h2>Upload OVA File</h2>
-    <form method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
+    <form id="uploadForm" method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
         <div class="form-group">
             <label for="file">Select OVA file to upload:</label>
             <input type="file" id="file" name="file" accept=".ova" required>
-            <small>Maximum file size: 10GB</small>
+            <small>Maximum file size: 20GB</small>
         </div>
-        <button type="submit" class="btn btn-success">Upload</button>
+        <button type="submit" id="uploadBtn" class="btn btn-success">Upload</button>
+        <button type="button" id="cancelBtn" class="btn btn-danger" style="display: none;" onclick="cancelUpload()">Cancel Upload</button>
     </form>
+
+    <!-- Upload Progress -->
+    <div id="uploadProgress" style="display: none; margin-top: 20px;">
+        <div style="margin-bottom: 10px;">
+            <strong id="uploadStatus">Uploading...</strong>
+        </div>
+        <div style="background: #e9ecef; border-radius: 4px; height: 30px; overflow: hidden; position: relative;">
+            <div id="progressBar" style="background: linear-gradient(90deg, #28a745, #20c997); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px;">
+                0%
+            </div>
+        </div>
+        <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 14px; color: #666;">
+            <span id="uploadSize">0 MB / 0 MB</span>
+            <span id="uploadSpeed">0 MB/s</span>
+            <span id="uploadETA">Calculating...</span>
+        </div>
+    </div>
 </div>
 
 <div class="card">
@@ -84,4 +102,131 @@
         <li><strong>Deploy</strong> the OVA to your ESXi server with custom parameters</li>
     </ol>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let uploadXHR = null;
+    let uploadStartTime = null;
+
+    // Handle form submission with progress tracking
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('file');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Please select a file to upload');
+            return;
+        }
+
+        // Check file size (20GB limit)
+        const maxSize = 20 * 1024 * 1024 * 1024; // 20GB
+        if (file.size > maxSize) {
+            alert('File size exceeds 20GB limit');
+            return;
+        }
+
+        // Prepare upload
+        uploadStartTime = Date.now();
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Show progress UI
+        document.getElementById('uploadProgress').style.display = 'block';
+        document.getElementById('uploadBtn').style.display = 'none';
+        document.getElementById('cancelBtn').style.display = 'inline-block';
+
+        // Create XHR request
+        uploadXHR = new XMLHttpRequest();
+
+        // Track upload progress
+        uploadXHR.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                const percentComplete = (e.loaded / e.total) * 100;
+                const uploadedMB = (e.loaded / 1024 / 1024).toFixed(2);
+                const totalMB = (e.total / 1024 / 1024).toFixed(2);
+
+                // Update progress bar
+                const progressBar = document.getElementById('progressBar');
+                progressBar.style.width = percentComplete + '%';
+                progressBar.textContent = percentComplete.toFixed(1) + '%';
+
+                // Calculate upload speed and ETA
+                const elapsedTime = (Date.now() - uploadStartTime) / 1000; // seconds
+                const uploadSpeed = (e.loaded / elapsedTime / 1024 / 1024).toFixed(2); // MB/s
+                const remainingBytes = e.total - e.loaded;
+                const eta = remainingBytes / (e.loaded / elapsedTime);
+                const etaMinutes = Math.floor(eta / 60);
+                const etaSeconds = Math.floor(eta % 60);
+
+                // Update UI
+                document.getElementById('uploadSize').textContent = uploadedMB + ' MB / ' + totalMB + ' MB';
+                document.getElementById('uploadSpeed').textContent = uploadSpeed + ' MB/s';
+
+                if (eta < Infinity && eta > 0) {
+                    document.getElementById('uploadETA').textContent = 'ETA: ' + etaMinutes + 'm ' + etaSeconds + 's';
+                } else {
+                    document.getElementById('uploadETA').textContent = 'Calculating...';
+                }
+            }
+        });
+
+        // Handle completion
+        uploadXHR.addEventListener('load', function() {
+            if (uploadXHR.status === 200 || uploadXHR.status === 302) {
+                document.getElementById('uploadStatus').innerHTML = '<span style="color: #28a745;">✓ Upload Complete!</span>';
+                document.getElementById('uploadSpeed').textContent = 'Complete';
+                document.getElementById('uploadETA').textContent = '';
+
+                // Reload page after 1 second
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Upload Failed</span>';
+                document.getElementById('uploadBtn').style.display = 'inline-block';
+                document.getElementById('cancelBtn').style.display = 'none';
+                alert('Upload failed: ' + uploadXHR.statusText);
+            }
+        });
+
+        // Handle errors
+        uploadXHR.addEventListener('error', function() {
+            document.getElementById('uploadStatus').innerHTML = '<span style="color: #dc3545;">✗ Upload Error</span>';
+            document.getElementById('uploadBtn').style.display = 'inline-block';
+            document.getElementById('cancelBtn').style.display = 'none';
+            alert('Upload error occurred');
+        });
+
+        // Handle abort
+        uploadXHR.addEventListener('abort', function() {
+            document.getElementById('uploadStatus').innerHTML = '<span style="color: #856404;">⚠ Upload Cancelled</span>';
+            document.getElementById('uploadBtn').style.display = 'inline-block';
+            document.getElementById('cancelBtn').style.display = 'none';
+            document.getElementById('uploadProgress').style.display = 'none';
+        });
+
+        // Send the request
+        uploadXHR.open('POST', '{{ url_for("upload_file") }}', true);
+        uploadXHR.send(formData);
+    });
+
+    // Cancel upload function
+    function cancelUpload() {
+        if (uploadXHR && confirm('Are you sure you want to cancel the upload?')) {
+            uploadXHR.abort();
+        }
+    }
+
+    // Warn user if they try to leave during upload
+    window.addEventListener('beforeunload', function(e) {
+        if (uploadXHR && uploadXHR.readyState !== 4) {
+            e.preventDefault();
+            e.returnValue = 'Upload in progress. Are you sure you want to leave?';
+            return e.returnValue;
+        }
+    });
+</script>
 {% endblock %}

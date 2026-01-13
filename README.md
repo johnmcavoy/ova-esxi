@@ -242,7 +242,7 @@ ovftool \
 2. **Restrict Network Access**: Use firewall rules to limit access to trusted IPs
 3. **Change Default Secret Key**: Set a strong `SECRET_KEY` environment variable
 4. **Secure Credentials**: Use environment variables, not hardcoded passwords
-5. **File Upload Limits**: The app limits uploads to 10GB by default
+5. **File Upload Limits**: The app supports uploads up to 20GB with progress tracking
 6. **ESXi Certificate Validation**: Currently disabled (`--noSSLVerify`) - enable in production
 
 ### Production Deployment Example (with nginx)
@@ -264,7 +264,7 @@ server {
 
         # Increase timeout for large file uploads
         proxy_read_timeout 600s;
-        client_max_body_size 10G;
+        client_max_body_size 20G;
     }
 }
 ```
